@@ -1,0 +1,474 @@
+export const LARGE_ENTERPRISE_CONFIGS = [
+  {
+    filename: 'Edge_R1_Perimeter.cfg',
+    content: `hostname Edge-R1
+enable secret 9 $9$Kx8Z3q7Lp1mN.v$8xT8gY7o9P1aQ2c
+service password-encryption
+service timestamps debug datetime msec
+service timestamps log datetime msec
+ip domain-name enterprise.net
+ip ssh version 2
+banner motd ^C
+=============================================================
+ WARNING: AUTHORIZED CORPORATE ACCESS ONLY. ALL SESSIONS LOGGED.
+=============================================================
+^C
+interface GigabitEthernet0/0
+ description WAN-Uplink-to-Primary-ISP-Tier1
+ ip address 203.0.113.2 255.255.255.252
+ ip access-group WAN-INBOUND in
+ no ip proxy-arp
+ no ip redirects
+ no shutdown
+interface GigabitEthernet0/1
+ description DMZ-Public-Facing-Services
+ ip address 192.168.100.1 255.255.255.0
+ ip access-group DMZ-FILTER in
+ no ip redirects
+ no shutdown
+interface GigabitEthernet0/2
+ description P2P-Link-to-Core-SW1
+ ip address 10.0.0.1 255.255.255.252
+ no shutdown
+interface GigabitEthernet0/3
+ description P2P-Link-to-Core-SW2
+ ip address 10.0.0.5 255.255.255.252
+ no shutdown
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+router ospf 1
+ router-id 1.1.1.1
+ passive-interface GigabitEthernet0/0
+ passive-interface GigabitEthernet0/1
+ network 10.0.0.0 0.0.0.3 area 0
+ network 10.0.0.4 0.0.0.3 area 0
+ network 192.168.100.0 0.0.0.255 area 0
+ default-information originate
+ip access-list extended WAN-INBOUND
+ remark === Block spoofed internal IP addresses from WAN ===
+ deny ip 10.0.0.0 0.255.255.255 any log
+ deny ip 172.16.0.0 0.15.255.255 any log
+ deny ip 192.168.0.0 0.0.255.255 any log
+ remark === Allow Inbound Web & Mail to DMZ Servers only ===
+ permit tcp any host 192.168.100.10 eq 80
+ permit tcp any host 192.168.100.10 eq 443
+ permit tcp any host 192.168.100.25 eq 25
+ permit tcp any any established
+ permit icmp any any echo-reply
+ deny ip any any log
+ip access-list extended DMZ-FILTER
+ permit udp host 192.168.100.10 host 192.168.30.10 eq 53
+ permit tcp host 192.168.100.10 host 192.168.30.20 eq 3306
+ deny ip 192.168.100.0 0.0.0.255 192.168.0.0 0.0.255.255 log
+ permit ip 192.168.100.0 0.0.0.255 any
+line con 0
+ exec-timeout 5 0
+ login local
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+end`
+  },
+  {
+    filename: 'Core_SW1_Routing.cfg',
+    content: `hostname Core-SW1
+enable secret 9 $9$M0aC5s9Nr3oP.x$0zV0iA9q1R3cS4e
+service password-encryption
+ip routing
+spanning-tree mode rapid-pvst
+spanning-tree vlan 1-99 priority 4096
+ip domain-name enterprise.net
+ip ssh version 2
+banner motd ^C
+=============================================================
+ WARNING: CORE SWITCH 1 - ENTERPRISE BACKBONE. AUTHORIZED ONLY.
+=============================================================
+^C
+vlan 10
+ name Corporate-Users
+vlan 20
+ name Engineering-Dev
+vlan 30
+ name DataCenter-Servers
+vlan 40
+ name Guest-Wireless
+vlan 99
+ name Network-Management
+interface GigabitEthernet0/1
+ description Routed-Uplink-to-Edge-R1
+ no switchport
+ ip address 10.0.0.2 255.255.255.252
+ no shutdown
+interface GigabitEthernet0/2
+ description Routed-Interconnect-to-Core-SW2
+ no switchport
+ ip address 10.0.0.9 255.255.255.252
+ no shutdown
+interface GigabitEthernet1/0/1
+ description Trunk-to-Dist-Access-BldgA
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,50,99
+ no shutdown
+interface GigabitEthernet1/0/2
+ description Trunk-to-Dist-Access-BldgB
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,40,99
+ no shutdown
+interface GigabitEthernet1/0/3
+ description Trunk-to-DC-ServerFarm-SW
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,99
+ no shutdown
+interface Vlan10
+ description Gateway-Corporate-Users
+ ip address 192.168.10.1 255.255.255.0
+ ip access-group CORP-USERS-IN in
+ no shutdown
+interface Vlan20
+ description Gateway-Engineering-Dev
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+interface Vlan30
+ description Gateway-DataCenter-Servers
+ ip address 192.168.30.1 255.255.255.0
+ ip access-group SERVERS-OUT out
+ no shutdown
+interface Vlan40
+ description Gateway-Guest-Wireless
+ ip address 192.168.40.1 255.255.255.0
+ ip access-group GUEST-RESTRICT-IN in
+ no shutdown
+interface Vlan99
+ description Gateway-Out-Of-Band-Management
+ ip address 10.99.0.1 255.255.255.0
+ no shutdown
+router ospf 1
+ router-id 2.2.2.1
+ network 10.0.0.0 0.0.0.3 area 0
+ network 10.0.0.8 0.0.0.3 area 0
+ network 192.168.10.0 0.0.0.255 area 0
+ network 192.168.20.0 0.0.0.255 area 0
+ network 192.168.30.0 0.0.0.255 area 0
+ network 192.168.40.0 0.0.0.255 area 0
+ network 10.99.0.0 0.0.0.255 area 0
+ip access-list extended GUEST-RESTRICT-IN
+ remark === Isolate Guest VLAN from all internal corporate networks ===
+ deny ip 192.168.40.0 0.0.0.255 192.168.10.0 0.0.0.255 log
+ deny ip 192.168.40.0 0.0.0.255 192.168.20.0 0.0.0.255 log
+ deny ip 192.168.40.0 0.0.0.255 192.168.30.0 0.0.0.255 log
+ deny ip 192.168.40.0 0.0.0.255 10.0.0.0 0.255.255.255 log
+ permit udp 192.168.40.0 0.0.0.255 any eq 53
+ permit tcp 192.168.40.0 0.0.0.255 any eq 80
+ permit tcp 192.168.40.0 0.0.0.255 any eq 443
+ deny ip any any log
+ip access-list extended CORP-USERS-IN
+ remark === Prevent corporate users from accessing DC database port 3306 directly ===
+ deny tcp 192.168.10.0 0.0.0.255 host 192.168.30.20 eq 3306 log
+ permit tcp 192.168.10.0 0.0.0.255 host 192.168.30.30 eq 443
+ permit udp 192.168.10.0 0.0.0.255 host 192.168.30.10 eq 53
+ permit tcp 192.168.10.0 0.0.0.255 host 192.168.30.10 eq 53
+ permit tcp 192.168.10.0 0.0.0.255 host 192.168.30.10 eq 88
+ permit ip 192.168.10.0 0.0.0.255 any
+ip access-list extended SERVERS-OUT
+ permit tcp any 192.168.30.0 0.0.0.255 established
+ permit tcp 192.168.10.0 0.0.0.255 host 192.168.30.30 eq 443
+ permit udp 192.168.0.0 0.0.255.255 host 192.168.30.10 eq 53
+ deny ip any 192.168.30.0 0.0.0.255 log
+line con 0
+ exec-timeout 5 0
+ login local
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+end`
+  },
+  {
+    filename: 'Core_SW2_Redundant.cfg',
+    content: `hostname Core-SW2
+enable secret 9 $9$N1bD6t0Os4pQ.y$1aW1jB0r2S4dT5f
+service password-encryption
+ip routing
+spanning-tree mode rapid-pvst
+spanning-tree vlan 1-99 priority 8192
+ip domain-name enterprise.net
+ip ssh version 2
+banner motd ^C
+=============================================================
+ WARNING: CORE SWITCH 2 - REDUNDANT BACKBONE. AUTHORIZED ONLY.
+=============================================================
+^C
+vlan 10
+ name Corporate-Users
+vlan 20
+ name Engineering-Dev
+vlan 30
+ name DataCenter-Servers
+vlan 40
+ name Guest-Wireless
+vlan 99
+ name Network-Management
+interface GigabitEthernet0/1
+ description Routed-Uplink-to-Edge-R1
+ no switchport
+ ip address 10.0.0.6 255.255.255.252
+ no shutdown
+interface GigabitEthernet0/2
+ description Routed-Interconnect-to-Core-SW1
+ no switchport
+ ip address 10.0.0.10 255.255.255.252
+ no shutdown
+interface GigabitEthernet1/0/1
+ description Redundant-Trunk-to-Dist-Access-BldgA
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,50,99
+ no shutdown
+interface GigabitEthernet1/0/2
+ description Redundant-Trunk-to-Dist-Access-BldgB
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,40,99
+ no shutdown
+interface GigabitEthernet1/0/3
+ description Redundant-Trunk-to-DC-ServerFarm-SW
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,99
+ no shutdown
+interface Vlan10
+ description Gateway-Corporate-Users-Secondary
+ ip address 192.168.10.2 255.255.255.0
+ no shutdown
+interface Vlan20
+ description Gateway-Engineering-Dev-Secondary
+ ip address 192.168.20.2 255.255.255.0
+ no shutdown
+interface Vlan30
+ description Gateway-DataCenter-Servers-Secondary
+ ip address 192.168.30.2 255.255.255.0
+ no shutdown
+interface Vlan40
+ description Gateway-Guest-Wireless-Secondary
+ ip address 192.168.40.2 255.255.255.0
+ no shutdown
+interface Vlan99
+ description Gateway-Out-Of-Band-Management
+ ip address 10.99.0.2 255.255.255.0
+ no shutdown
+router ospf 1
+ router-id 2.2.2.2
+ network 10.0.0.4 0.0.0.3 area 0
+ network 10.0.0.8 0.0.0.3 area 0
+ network 192.168.10.0 0.0.0.255 area 0
+ network 192.168.20.0 0.0.0.255 area 0
+ network 192.168.30.0 0.0.0.255 area 0
+ network 192.168.40.0 0.0.0.255 area 0
+ network 10.99.0.0 0.0.0.255 area 0
+line con 0
+ exec-timeout 5 0
+ login local
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+end`
+  },
+  {
+    filename: 'Dist_Access_BldgA.cfg',
+    content: `hostname Dist-Access-BldgA
+enable secret 9 $9$O2cE7u1Pt5qR.z$2bX2kC1s3T5eU6g
+service password-encryption
+spanning-tree mode rapid-pvst
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+ip domain-name enterprise.net
+ip ssh version 2
+banner motd ^C
+=============================================================
+ BUILDING A ACCESS SWITCH - CORPORATE ENDPOINTS
+=============================================================
+^C
+vlan 10
+ name Corporate-Users
+vlan 50
+ name VoIP-Phones
+vlan 99
+ name Network-Management
+interface GigabitEthernet0/1
+ description Trunk-Uplink-to-Core-SW1
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,50,99
+ no shutdown
+interface GigabitEthernet0/2
+ description Redundant-Uplink-to-Core-SW2
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,50,99
+ no shutdown
+interface FastEthernet0/1
+ description Finance-Workstation-01
+ switchport mode access
+ switchport access vlan 10
+ switchport voice vlan 50
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ no shutdown
+interface FastEthernet0/2
+ description HR-Workstation-02
+ switchport mode access
+ switchport access vlan 10
+ switchport voice vlan 50
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ no shutdown
+interface Vlan99
+ description Switch-Management-Interface
+ ip address 10.99.0.11 255.255.255.0
+ no shutdown
+ip default-gateway 10.99.0.1
+line con 0
+ exec-timeout 5 0
+ login local
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+end`
+  },
+  {
+    filename: 'Dist_Access_BldgB.cfg',
+    content: `hostname Dist-Access-BldgB
+enable secret 9 $9$P3dF8v2Qu6rS.a$3cY3lD2t4U6fV7h
+service password-encryption
+spanning-tree mode rapid-pvst
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+ip domain-name enterprise.net
+ip ssh version 2
+banner motd ^C
+=============================================================
+ BUILDING B ACCESS SWITCH - R&D AND WIRELESS
+=============================================================
+^C
+vlan 20
+ name Engineering-Dev
+vlan 40
+ name Guest-Wireless
+vlan 99
+ name Network-Management
+interface GigabitEthernet0/1
+ description Trunk-Uplink-to-Core-SW1
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,40,99
+ no shutdown
+interface GigabitEthernet0/2
+ description Redundant-Uplink-to-Core-SW2
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 20,40,99
+ no shutdown
+interface FastEthernet0/1
+ description Dev-Workstation-Lab1
+ switchport mode access
+ switchport access vlan 20
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ no shutdown
+interface FastEthernet0/24
+ description Guest-WiFi-AccessPoint-Lobby
+ switchport mode access
+ switchport access vlan 40
+ no shutdown
+interface Vlan99
+ description Switch-Management-Interface
+ ip address 10.99.0.12 255.255.255.0
+ no shutdown
+ip default-gateway 10.99.0.1
+line con 0
+ exec-timeout 5 0
+ login local
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+end`
+  },
+  {
+    filename: 'DC_ServerFarm_SW.cfg',
+    content: `hostname DC-ServerFarm-SW
+enable secret 9 $9$Q4eG9w3Rv7sT.b$4dZ4mE3u5V7gW8i
+service password-encryption
+spanning-tree mode rapid-pvst
+ip domain-name enterprise.net
+ip ssh version 2
+banner motd ^C
+=============================================================
+ CRITICAL DATA CENTER SWITCH - STRICT ACCESS CONTROLS APPLIED
+=============================================================
+^C
+vlan 30
+ name DataCenter-Servers
+vlan 99
+ name Network-Management
+interface GigabitEthernet0/1
+ description Trunk-Uplink-to-Core-SW1
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,99
+ no shutdown
+interface GigabitEthernet0/2
+ description Redundant-Uplink-to-Core-SW2
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 30,99
+ no shutdown
+interface GigabitEthernet1/0/1
+ description Primary-DomainController-AD-DNS
+ switchport mode access
+ switchport access vlan 30
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation shutdown
+ no shutdown
+interface GigabitEthernet1/0/2
+ description Enterprise-Database-Cluster-SQL
+ switchport mode access
+ switchport access vlan 30
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation shutdown
+ no shutdown
+interface GigabitEthernet1/0/3
+ description Core-Banking-ERP-AppServer
+ switchport mode access
+ switchport access vlan 30
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation shutdown
+ no shutdown
+interface Vlan99
+ description Switch-Management-Interface
+ ip address 10.99.0.30 255.255.255.0
+ no shutdown
+ip default-gateway 10.99.0.1
+line con 0
+ exec-timeout 5 0
+ login local
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+end`
+  }
+];

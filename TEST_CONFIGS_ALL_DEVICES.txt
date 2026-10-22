@@ -1,0 +1,318 @@
+! ==============================================================================
+! NETSEC ANALYZER — ENTERPRISE MULTI-DEVICE TEST CONFIGURATIONS
+! ==============================================================================
+! INSTRUCTIONS:
+! You can copy this ENTIRE file and paste it into the "Paste Configuration Text"
+! tab in NetSec Analyzer, or upload the individual .cfg files located in /test_configs.
+! NetSec Analyzer automatically detects each device boundary, parses line-by-line
+! evidence, builds the interactive topology graph, identifies vulnerabilities,
+! traces multi-hop attack paths, and computes resilience metrics!
+! ==============================================================================
+
+! ==============================================================================
+! DEVICE 1: Edge_R1.cfg (Perimeter Router / WAN Gateway)
+! ==============================================================================
+version 15.4
+hostname Edge_R1
+!
+enable password cisco_insecure_pass
+no service password-encryption
+!
+ip domain-name enterprise.net
+!
+interface GigabitEthernet0/0
+ description WAN-Uplink-to-Internet-ISP
+ ip address 203.0.113.2 255.255.255.252
+ ip access-group PERIMETER_IN in
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description P2P-Link-to-Core-SW1
+ ip address 10.0.0.1 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet0/2
+ description P2P-Link-to-Core-SW2
+ ip address 10.0.0.5 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet0/3
+ description DMZ-Public-Facing-Services
+ ip address 192.168.100.1 255.255.255.0
+ no shutdown
+!
+interface GigabitEthernet0/4
+ no shutdown
+!
+interface GigabitEthernet0/5
+ no shutdown
+!
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+!
+router ospf 1
+ router-id 1.1.1.1
+ network 10.0.0.0 0.0.0.3 area 0
+ network 10.0.0.4 0.0.0.3 area 0
+ network 192.168.100.0 0.0.0.255 area 0
+ default-information originate
+!
+! VULNERABLE OVERLY-PERMISSIVE ACL (Allows arbitrary traffic through perimeter)
+ip access-list extended PERIMETER_IN
+ permit ip any any
+ permit tcp any host 192.168.100.10 eq 80
+ permit tcp any host 192.168.100.10 eq 443
+!
+line con 0
+ password consolepass
+ login
+!
+line vty 0 4
+ transport input telnet
+ password vtyinsecure
+ login
+!
+end
+
+! ==============================================================================
+! DEVICE 2: Core_SW1.cfg (Primary Core / Distribution L3 Switch)
+! ==============================================================================
+version 15.2
+hostname Core_SW1
+!
+enable password corepass123
+no service password-encryption
+ip routing
+!
+vlan 10
+ name Corporate_Users
+!
+vlan 20
+ name Engineering_Dev
+!
+vlan 30
+ name Server_Farm_DC
+!
+interface GigabitEthernet0/1
+ description Routed-Uplink-to-Edge-R1
+ no switchport
+ ip address 10.0.0.2 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet0/2
+ description Interconnect-to-Core-SW2
+ no switchport
+ ip address 10.0.0.9 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet1/0/1
+ description Trunk-Uplink-to-Dist-Access-SW1
+ switchport mode trunk
+ switchport trunk allowed vlan 1,10,20
+ no shutdown
+!
+interface GigabitEthernet1/0/2
+ description Trunk-Uplink-to-ServerFarm-SW
+ switchport mode trunk
+ switchport trunk allowed vlan 30
+ no shutdown
+!
+interface Vlan10
+ description Gateway-Corporate-Users
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+!
+interface Vlan20
+ description Gateway-Engineering-Dev
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+!
+interface Vlan30
+ description Gateway-DataCenter-Servers
+ ip address 192.168.30.1 255.255.255.0
+ no shutdown
+!
+router ospf 1
+ router-id 2.2.2.2
+ network 10.0.0.0 0.0.0.3 area 0
+ network 10.0.0.8 0.0.0.3 area 0
+ network 192.168.10.0 0.0.0.255 area 0
+ network 192.168.20.0 0.0.0.255 area 0
+ network 192.168.30.0 0.0.0.255 area 0
+!
+line con 0
+ password switchcon
+ login
+!
+line vty 0 4
+ transport input telnet
+ login
+!
+end
+
+! ==============================================================================
+! DEVICE 3: Core_SW2.cfg (Secondary Core / Redundant Distribution Switch)
+! ==============================================================================
+version 15.2
+hostname Core_SW2
+!
+enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
+service password-encryption
+ip routing
+!
+vlan 10
+ name Corporate_Users
+!
+vlan 20
+ name Engineering_Dev
+!
+vlan 30
+ name Server_Farm_DC
+!
+interface GigabitEthernet0/1
+ description Routed-Uplink-to-Edge-R1
+ no switchport
+ ip address 10.0.0.6 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet0/2
+ description Interconnect-to-Core-SW1
+ no switchport
+ ip address 10.0.0.10 255.255.255.252
+ no shutdown
+!
+interface Vlan10
+ ip address 192.168.10.2 255.255.255.0
+ no shutdown
+!
+interface Vlan20
+ ip address 192.168.20.2 255.255.255.0
+ no shutdown
+!
+router ospf 1
+ router-id 3.3.3.3
+ network 10.0.0.4 0.0.0.3 area 0
+ network 10.0.0.8 0.0.0.3 area 0
+ network 192.168.10.0 0.0.0.255 area 0
+ network 192.168.20.0 0.0.0.255 area 0
+!
+line con 0
+ exec-timeout 5 0
+ login local
+!
+line vty 0 4
+ transport input ssh
+ exec-timeout 10 0
+ login local
+!
+end
+
+! ==============================================================================
+! DEVICE 4: Dist_Access_SW1.cfg (User Workstation & Guest Access Switch)
+! ==============================================================================
+version 15.0
+hostname Dist_Access_SW1
+!
+enable password switchuserpass
+no service password-encryption
+!
+vlan 1
+ name default
+!
+vlan 10
+ name Corporate_Users
+!
+vlan 20
+ name Guest_Wireless
+!
+interface GigabitEthernet0/1
+ description Trunk-to-Core-SW1
+ switchport mode trunk
+ switchport trunk native vlan 1
+ switchport trunk allowed vlan 1,10,20
+ no shutdown
+!
+interface FastEthernet0/1
+ description Workstation-PC-01
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+!
+interface FastEthernet0/2
+ description Workstation-PC-02
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+!
+interface FastEthernet0/3
+ description Guest-Laptop-01
+ switchport mode access
+ switchport access vlan 20
+ no shutdown
+!
+interface FastEthernet0/4
+ description Inactive-Port-Unused
+ switchport mode access
+ switchport access vlan 1
+ no shutdown
+!
+interface FastEthernet0/5
+ description Inactive-Port-Unused
+ switchport mode access
+ switchport access vlan 1
+ no shutdown
+!
+line con 0
+ password userpass
+ login
+!
+line vty 0 4
+ transport input telnet
+ login
+!
+end
+
+! ==============================================================================
+! DEVICE 5: ServerFarm_SW.cfg (Critical Data Center / DB Server Switch)
+! ==============================================================================
+version 15.0
+hostname ServerFarm_SW
+!
+enable password serverfarmpwd
+no service password-encryption
+!
+vlan 30
+ name Server_Farm_DC
+!
+interface GigabitEthernet0/1
+ description Single-Uplink-to-Core-SW1
+ switchport mode trunk
+ switchport trunk allowed vlan 30
+ no shutdown
+!
+interface FastEthernet0/1
+ description Production-Database-Server
+ switchport mode access
+ switchport access vlan 30
+ no shutdown
+!
+interface FastEthernet0/2
+ description Web-Application-Server
+ switchport mode access
+ switchport access vlan 30
+ no shutdown
+!
+interface FastEthernet0/3
+ description Active-Directory-Domain-Controller
+ switchport mode access
+ switchport access vlan 30
+ no shutdown
+!
+line con 0
+ password dcconsole
+ login
+!
+line vty 0 4
+ transport input telnet
+ login
+!
+end
