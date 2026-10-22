@@ -25,10 +25,10 @@ interface HomeDashboardProps {
   currentRun: AnalysisRun | null;
   projects: Project[];
   onSelectProject: (proj: Project) => void;
-  onOpenUploadPkt: () => void;
+  onOpenUploadPkt: (file?: File, report?: any) => void;
   onOpenUploadConfigs: () => void;
   onCreateNewProject: () => void;
-  onLoadSample: (type: 'vulnerable' | 'hardened' | 'large_enterprise') => void;
+  onLoadSample: (type: 'vulnerable' | 'hardened' | 'large_enterprise' | '3_network') => void;
   onNavigate: (screen: any) => void;
   onFileUploadSuccess?: (projectId: string) => Promise<void>;
 }
@@ -108,9 +108,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       setUploadStep(2);
       if (file.name.toLowerCase().endsWith('.pkt')) {
         const res = await apiClient.uploadPkt(targetProjectId, file);
-        if (!res.supported) {
-          // Open the modal with full guidance
-          onOpenUploadPkt();
+        if (res.extracted_devices_count === 0 || res.status === 'Unsupported') {
+          // Open the modal with pre-loaded file and full diagnostic report
+          onOpenUploadPkt(file, res);
           setIsUploading(false);
           setUploadStep(0);
           return;
@@ -163,6 +163,13 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             Samples:
           </span>
           <button
+            onClick={() => onLoadSample('3_network')}
+            className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold transition-all shadow-xs flex items-center gap-1"
+          >
+            <Network className="w-3.5 h-3.5 text-indigo-600" />
+            3 Networks (Packet Tracer)
+          </button>
+          <button
             onClick={() => onLoadSample('large_enterprise')}
             className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold transition-all shadow-xs flex items-center gap-1"
           >
@@ -188,7 +195,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Card 1: Upload Packet Tracer File */}
         <button
-          onClick={onOpenUploadPkt}
+          onClick={() => onOpenUploadPkt()}
           className="cyber-card p-5 text-left hover:border-blue-400 hover:shadow-md transition-all group flex flex-col justify-between bg-white border border-slate-200"
         >
           <div>

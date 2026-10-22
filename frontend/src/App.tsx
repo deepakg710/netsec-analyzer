@@ -27,6 +27,14 @@ export function App() {
   // Modals
   const [isUploadConfigsOpen, setIsUploadConfigsOpen] = useState(false);
   const [isUploadPktOpen, setIsUploadPktOpen] = useState(false);
+  const [pktInitialFile, setPktInitialFile] = useState<File | null>(null);
+  const [pktInitialReport, setPktInitialReport] = useState<any | null>(null);
+
+  const handleOpenUploadPkt = (file?: File | null, report?: any | null) => {
+    setPktInitialFile(file || null);
+    setPktInitialReport(report || null);
+    setIsUploadPktOpen(true);
+  };
 
   // Load projects on startup
   useEffect(() => {
@@ -115,18 +123,121 @@ export function App() {
   };
 
   // Sample loader fixtures
-  const handleLoadSample = async (type: 'vulnerable' | 'hardened' | 'large_enterprise') => {
+  const handleLoadSample = async (type: 'vulnerable' | 'hardened' | 'large_enterprise' | '3_network') => {
     setIsAnalyzing(true);
     try {
       const projName =
         type === 'large_enterprise'
           ? 'Large_Enterprise_Campus (6 Devices)'
+          : type === '3_network'
+          ? 'Packet Tracer (3 network.pkt)'
           : type === 'vulnerable'
           ? 'Office_Network_Branch (Vulnerable)'
           : 'Enterprise_Core (Hardened)';
-      const proj = await apiClient.createProject(projName, 'Enterprise campus network design fixture');
+      const projDesc =
+        type === '3_network'
+          ? 'Exported Cisco IOS configurations from Cisco Packet Tracer 9.0.1 (3 network.pkt)'
+          : 'Enterprise campus network design fixture';
+      const proj = await apiClient.createProject(projName, projDesc);
 
-      if (type === 'large_enterprise') {
+      if (type === '3_network') {
+        const r1 = `hostname R1-Gateway
+enable password cisco123
+no service password-encryption
+interface GigabitEthernet0/0
+ description Network-1_Engineering_VLAN10
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+interface GigabitEthernet0/1
+ description Network-2_Operations_VLAN20
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+interface GigabitEthernet0/2
+ description Network-3_ServerFarm_VLAN30
+ ip address 192.168.30.1 255.255.255.0
+ ip access-group 101 in
+ no shutdown
+interface Serial0/0/0
+ description WAN-Internet-Uplink
+ ip address 203.0.113.2 255.255.255.252
+ no shutdown
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+access-list 101 permit ip any any
+line vty 0 4
+ transport input telnet
+ login
+`;
+        const sw1 = `hostname SW1-Engineering
+enable password cisco123
+vlan 10
+ name Engineering-LAN1
+interface FastEthernet0/1
+ description PC-Engineer-1
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+interface FastEthernet0/2
+ description PC-Engineer-2
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+interface GigabitEthernet0/1
+ description Uplink-to-R1-G0/0
+ switchport mode trunk
+ no shutdown
+line vty 0 4
+ transport input telnet
+ login
+`;
+        const sw2 = `hostname SW2-Operations
+enable password cisco123
+vlan 20
+ name Operations-LAN2
+interface FastEthernet0/1
+ description PC-Operations-1
+ switchport mode access
+ switchport access vlan 20
+ no shutdown
+interface FastEthernet0/2
+ description PC-Operations-2
+ switchport mode access
+ switchport access vlan 20
+ no shutdown
+interface GigabitEthernet0/1
+ description Uplink-to-R1-G0/1
+ switchport mode trunk
+ no shutdown
+line vty 0 4
+ transport input telnet
+ login
+`;
+        const sw3 = `hostname SW3-ServerFarm
+enable secret 5 $1$mERr$9bI09V7Q4mGj7
+vlan 30
+ name ServerFarm-LAN3
+interface FastEthernet0/1
+ description App-Server-01
+ switchport mode access
+ switchport access vlan 30
+ no shutdown
+interface FastEthernet0/2
+ description DB-Server-01
+ switchport mode access
+ switchport access vlan 30
+ no shutdown
+interface GigabitEthernet0/1
+ description Uplink-to-R1-G0/2
+ switchport mode trunk
+ no shutdown
+line vty 0 4
+ transport input ssh
+ login local
+`;
+        await apiClient.pasteConfig(proj.id, 'R1-Gateway.cfg', r1);
+        await apiClient.pasteConfig(proj.id, 'SW1-Engineering.cfg', sw1);
+        await apiClient.pasteConfig(proj.id, 'SW2-Operations.cfg', sw2);
+        await apiClient.pasteConfig(proj.id, 'SW3-ServerFarm.cfg', sw3);
+      } else if (type === 'large_enterprise') {
         for (const cfg of LARGE_ENTERPRISE_CONFIGS) {
           await apiClient.pasteConfig(proj.id, cfg.filename, cfg.content);
         }
@@ -215,7 +326,7 @@ export function App() {
               currentRun={currentRun}
               projects={projects}
               onSelectProject={selectProject}
-              onOpenUploadPkt={() => setIsUploadPktOpen(true)}
+              onOpenUploadPkt={handleOpenUploadPkt}
               onOpenUploadConfigs={() => setIsUploadConfigsOpen(true)}
               onCreateNewProject={handleCreateNewProject}
               onLoadSample={handleLoadSample}
@@ -303,9 +414,13 @@ export function App() {
         projectId={currentProject?.id || ''}
         isOpenConfigs={isUploadConfigsOpen}
         isOpenPkt={isUploadPktOpen}
+        initialPktFile={pktInitialFile}
+        initialPktReport={pktInitialReport}
         onClose={() => {
           setIsUploadConfigsOpen(false);
           setIsUploadPktOpen(false);
+          setPktInitialFile(null);
+          setPktInitialReport(null);
         }}
         onSuccess={async (createdId) => {
           await loadProjects();
